@@ -56,7 +56,8 @@ def sample_film(app):
 
 def test_add_to_watchlist_creates_entry(app, sample_user, sample_film):
     """
-    Adding a valid film should create a WatchlistEntry in the database.
+    Adding a valid film should create a WatchlistEntry in the database,
+    defaulting to public=False.
     """
     with app.app_context():
         entry = add_to_watchlist(user_id=sample_user, film_id=sample_film)
@@ -64,12 +65,22 @@ def test_add_to_watchlist_creates_entry(app, sample_user, sample_film):
         assert entry is not None
         assert entry.user_id == sample_user
         assert entry.film_id == sample_film
+        assert entry.public is False
 
         # Verify it persisted
         in_db = WatchlistEntry.query.filter_by(
             user_id=sample_user, film_id=sample_film
         ).first()
         assert in_db is not None
+
+
+def test_add_to_watchlist_respects_explicit_public_true(app, sample_user, sample_film):
+    """
+    Passing public=True should override the private default.
+    """
+    with app.app_context():
+        entry = add_to_watchlist(user_id=sample_user, film_id=sample_film, public=True)
+        assert entry.public is True
 
 
 # ── Deduplication ────────────────────────────────────────────────────────────

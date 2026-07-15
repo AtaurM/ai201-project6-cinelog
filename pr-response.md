@@ -1,7 +1,12 @@
 # PR Response Doc — CineLog Watchlist Feature
 
 ## AI Usage
-<!-- Fill in at the end — how you used AI tools during this project -->
+I used Claude Code throughout this project, primarily for codebase orientation and implementation, with every code change reviewed and committed by hand.
+
+- **Orientation and finding the real review comments:** Before touching code, I had it read `models.py`, `services/collection_service.py`, and `tests/test_collection.py` to establish the existing `verb_to_noun` and dedup/error-handling patterns. I also used it to explore all sides before making a decision with the maintainer/reviewer wording (`@Samiz244`'s public-default rationale, `Dani-risingBW`'s date-order agreement) to argue against or with specifically.
+- **Pattern-matching for the code changes:** For Comments 1–3 and the `remove_from_watchlist()` stretch feature, I had it compare directly against `add_to_collection()` / `remove_from_collection()` before writing the watchlist equivalents, rather than inventing new error-handling shapes.
+- **Comments 4 and 5 (design decisions):** I wrote and reviewed the positions myself rather than accepting a first draft. For Comment 4, my own argument is grounded in a specific fact about *this* codebase — I had it grep the actual route files to confirm there is no discovery/profile/follower surface anywhere in CineLog yet, which is the concrete basis for arguing `public=True`'s "discovery" benefit is currently hypothetical. For Comment 5, I pushed for engaging with `Dani-risingBW`'s specific "mark off the oldest" scenario rather than just restating "consistency with collection" as the whole argument, since a maintainer would want to see the reviewer's actual point addressed, not sidestepped.
+- **Verification-driven work:** Every change was checked with `pytest tests/ -v` after each step, and I had it manually exercise the Flask endpoints with `test_client()` (e.g. add → duplicate → 404/409, add → remove → re-remove → 404) rather than assuming the route wrapping matched the service layer. During the rebase it also caught and explained a pre-existing bug unrelated to the six comments — `Film` had no relationship back to `WatchlistEntry`, so `GET /watchlist/<user_id>` would have thrown `AttributeError` on any non-empty watchlist — which I had it fix alongside Comment 5 since it was directly in the code being touched.
 
 ## Comment 1 — Rename
 **What I did:** Renamed `save_to_watchlist()` to `add_to_watchlist()` in `services/watchlist_service.py` to match the project's `verb_to_noun` convention used by `add_to_collection()` / `remove_from_collection()` / `get_collection()` in `services/collection_service.py`. Updated the call in `routes/watchlist/watchlist.py` (both the import and the call inside `add_film()`).
@@ -47,6 +52,9 @@ Added `remove_from_watchlist(user_id, film_id)` to `services/watchlist_service.p
 
 ### Second test — duplicate detection
 Added `test_add_to_watchlist_duplicate_raises`, modeled on `test_add_to_collection_duplicate_raises` in `tests/test_collection.py`. I picked this edge case specifically because it was the one gap left after Comment 3: the missing-test comment only asked for the nonexistent-`film_id` case, but the dedup logic I wrote for Comment 2 had no test covering its actual failure path — `add_to_watchlist()` could have silently regressed to allowing duplicates and nothing in the suite would have caught it. The test adds a film, adds it again and asserts `AlreadyInWatchlistError` is raised, then queries the DB directly to confirm exactly one `WatchlistEntry` exists (not zero, not two) — so it verifies both "the exception fires" and "no duplicate row snuck in before the exception was raised."
+
+### Visibility toggle
+Added an optional `public` parameter to `add_to_watchlist(user_id, film_id, public=False)`, so callers set visibility explicitly instead of only ever getting the model-level default. The default value matches the `WatchlistEntry.public` column default from Comment 4 (`False`/private), so existing callers that don't pass `public` see no behavior change. `routes/watchlist/watchlist.py`'s `POST /watchlist/<user_id>/add` now reads an optional `"public"` key from the request body (`data.get("public", False)`) and forwards it. This makes the Comment 4 decision something callers opt into deliberately rather than something baked silently into a column default — which was part of my own argument in Comment 4 against invisible defaults. Verified with `test_add_to_watchlist_creates_entry` (asserts the default is `False`) and a new `test_add_to_watchlist_respects_explicit_public_true` (asserts passing `public=True` is honored).
 
 ## PR Description
 
