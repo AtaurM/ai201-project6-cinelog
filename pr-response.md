@@ -40,6 +40,11 @@ Note: unlike `CollectionEntry`, `WatchlistEntry` doesn't have a `UniqueConstrain
 
 **How I verified no conflict remains:** After `git rebase --continue` finished, `git status` showed a clean working tree with no unmerged paths. I searched the actual source tree for leftover conflict markers (`grep -rn "<<<<<<<\|^>>>>>>>" -- app.py models.py routes/ services/ tests/ .gitignore`) and got no matches. I ran `pytest tests/ -v`, and all 6 tests (4 collection, 2 watchlist) pass against the rebased UUID schema. I also grepped `services/`, `routes/`, and `tests/` for `film_id` to manually confirm no code still assumed an integer ID (the one remaining literal, `"00000000-0000-0000-0000-000000000000"` in the nonexistent-film test, was already UUID-shaped from Comment 3, so it needed no change).
 
+## Stretch Features
+
+### remove_from_watchlist()
+Added `remove_from_watchlist(user_id, film_id)` to `services/watchlist_service.py`, following `remove_from_collection()`'s exact pattern in `services/collection_service.py`: look up the entry by `(user_id, film_id)`, raise a new `NotInWatchlistError` (sibling to `NotInCollectionError`) if it isn't found, otherwise delete and commit and return `True`. Added a matching `DELETE /watchlist/<user_id>/remove` route in `routes/watchlist/watchlist.py`, mirroring `routes/collection.py`'s `remove_film`, mapping `NotInWatchlistError` to a 404. Verified with two new tests in `tests/test_watchlist.py` (`test_remove_from_watchlist_deletes_entry`, `test_remove_from_watchlist_not_present_raises`) and a manual `test_client()` round-trip (add → remove → 200, remove again → 404).
+
 ## PR Description
 
 **What this feature does:** Adds a watchlist to CineLog so users can save films they want to watch later, separate from their `collection` (films they've already watched). It adds a `WatchlistEntry` model, `add_to_watchlist(user_id, film_id)` / `remove_from_watchlist(user_id, film_id)` / `get_watchlist(user_id)` service functions, and three REST endpoints: `GET /watchlist/<user_id>` (list a user's watchlist, newest-first), `POST /watchlist/<user_id>/add` (add a film, with duplicate and nonexistent-film handling), and `DELETE /watchlist/<user_id>/remove` (remove a film).
