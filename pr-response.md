@@ -14,8 +14,8 @@ Note: unlike `CollectionEntry`, `WatchlistEntry` doesn't have a `UniqueConstrain
 **How I verified:** Compared side-by-side with `add_to_collection()` (services/collection_service.py:27-58) before writing the check, to confirm the query shape and exception-then-return ordering matched. Ran the full test suite (`pytest tests/ -v`) to confirm the existing collection tests still pass and nothing regressed; the watchlist-specific duplicate test is added in Comment 3/stretch work.
 
 ## Comment 3 — Missing test
-**What I did:**
-**How I verified:**
+**What I did:** Created `tests/test_watchlist.py`, modeled directly on `tests/test_collection.py`. I reused the same `app`, `sample_user`, and `sample_film` fixtures verbatim (same in-memory `sqlite:///:memory:` app factory pattern), then wrote `test_add_to_watchlist_nonexistent_film_raises`, which is a direct port of `test_add_to_collection_nonexistent_film_raises`: it calls `add_to_watchlist()` with a well-formed but nonexistent `film_id` (`"00000000-0000-0000-0000-000000000000"`) and asserts `FilmNotFoundError` is raised via `pytest.raises`. I also added `test_add_to_watchlist_creates_entry` as a basic happy-path check (mirroring `test_add_to_collection_creates_entry`) so the new test file isn't just testing the one failure case in isolation.
+**How I verified:** Ran `pytest tests/test_watchlist.py -v`. Both tests pass. Then ran the full suite `pytest tests/ -v` (6 tests total across both files) to confirm no regressions.
 
 ## Comment 4 — Default visibility
 **My position:**
