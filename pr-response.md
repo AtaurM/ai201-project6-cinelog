@@ -41,4 +41,20 @@ Note: unlike `CollectionEntry`, `WatchlistEntry` doesn't have a `UniqueConstrain
 **How I verified no conflict remains:** After `git rebase --continue` finished, `git status` showed a clean working tree with no unmerged paths. I searched the actual source tree for leftover conflict markers (`grep -rn "<<<<<<<\|^>>>>>>>" -- app.py models.py routes/ services/ tests/ .gitignore`) and got no matches. I ran `pytest tests/ -v`, and all 6 tests (4 collection, 2 watchlist) pass against the rebased UUID schema. I also grepped `services/`, `routes/`, and `tests/` for `film_id` to manually confirm no code still assumed an integer ID (the one remaining literal, `"00000000-0000-0000-0000-000000000000"` in the nonexistent-film test, was already UUID-shaped from Comment 3, so it needed no change).
 
 ## PR Description
-<!-- Written at the end — feature overview, design decisions, manual testing steps -->
+
+**What this feature does:** Adds a watchlist to CineLog so users can save films they want to watch later, separate from their `collection` (films they've already watched). It adds a `WatchlistEntry` model, `add_to_watchlist(user_id, film_id)` / `remove_from_watchlist(user_id, film_id)` / `get_watchlist(user_id)` service functions, and three REST endpoints: `GET /watchlist/<user_id>` (list a user's watchlist, newest-first), `POST /watchlist/<user_id>/add` (add a film, with duplicate and nonexistent-film handling), and `DELETE /watchlist/<user_id>/remove` (remove a film).
+
+**Design decisions:**
+- **Default visibility:** New watchlist entries default to `public=False` (private). CineLog currently has no discovery/social surface anywhere in the app (no profile pages, no followers, no way to browse another user's watchlist without already knowing their `user_id`), so defaulting to public would expose users' "want to watch" data for a discovery feature that doesn't exist yet. Callers who do want a public entry can pass `public=True` explicitly via the new `public` parameter on `add_to_watchlist()`. Full reasoning in Comment 4 above.
+- **Sort order:** `get_watchlist()` returns entries newest-added-first (`date_added.desc()`), matching `get_collection()`'s existing sort order, instead of alphabetical. A watchlist is a queue of intent, and users need to see both what's freshest and work backward to the oldest un-watched entry — alphabetical order supports neither. Full reasoning in Comment 5 above.
+
+**How to manually test:**
+1. Start the app: `python app.py` (runs on `http://127.0.0.1:5000`).
+2. Create a user and a film, or use the seeded data — first check `GET /films/` to find a valid `film_id`, and note that user creation isn't exposed via API in this starter, so use the test fixtures / a direct DB insert, or `flask shell`, to get a `user_id`.
+3. Add a film to the watchlist: `curl -X POST http://127.0.0.1:5000/watchlist/<user_id>/add -H "Content-Type: application/json" -d '{"film_id": "<film_id>"}'` — expect `201` and a JSON body with `"public": false`.
+4. Try adding the same film again — expect `409` with an "already on this user's watchlist" error.
+5. Try adding a nonexistent `film_id` (e.g. a random UUID) — expect `404`.
+6. Add a second film with `"public": true` in the body — expect `201` with `"public": true` in the response (stretch feature).
+7. `GET /watchlist/<user_id>` — expect both films back, newest-added first.
+8. `DELETE /watchlist/<user_id>/remove` with `{"film_id": "<film_id>"}` for one of them — expect `200`, then re-`GET` to confirm only the other film remains (stretch feature).
+9. Run the automated suite end-to-end: `pytest tests/ -v` — all tests (collection + watchlist) should pass.
